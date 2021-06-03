@@ -1,7 +1,9 @@
 from serial import Serial
 import socket
 import pickle
-
+import time
+# Look up serial port for ardunio
+# Connect to Pi first, then run app
 
 def invert_channel(value):
     return 3000 - value
@@ -29,14 +31,17 @@ bufferSize = 128
 
 UDPClientSocket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 
+
 # establish serial connection to Arduino
 # reading inputs from GoBilda transmitter
-ser = Serial('/dev/cu.usbmodem144401', 115200)
+# Check using arduino ide: Tools --> Port -->
+ser = Serial('/dev/cu.usbmodem144301', 115200)
 
 print(ser.name)
 
 if ser.is_open:
     while True:
+        time.sleep(0.010)
         values = ser.readline()
         channels = values.split()
 
@@ -47,15 +52,13 @@ if ser.is_open:
         L_Y = invert_channel(int(channels[2]))
         R_X = invert_channel(int(channels[0]))
         R_Y = int(channels[1])
-
+        SWITCH = "MID"
         if abs(int(channels[4]) - 2000) < 100:
             SWITCH = "LO"
         elif abs(int(channels[4]) - 1500) < 100:
             SWITCH = "MID"
         elif abs(int(channels[4]) - 1000) < 100:
             SWITCH = "HI"
-        else:
-            SWITCH = None
 
         DIAL = int(channels[5])
 
@@ -94,6 +97,8 @@ if ser.is_open:
         M2 = shrink_channel(M2, speed_modifier[SWITCH])
         M3 = shrink_channel(M3, speed_modifier[SWITCH])
         M4 = shrink_channel(M4, speed_modifier[SWITCH])
+        M5 = shrink_channel(M5, 0.5*speed_modifier[SWITCH])
+        M6 = shrink_channel(M6, 0.5*speed_modifier[SWITCH])
 
         M1 = map_value(M1, 1000, 2000, 1100, 1900)
         M2 = map_value(M2, 1000, 2000, 1100, 1900)
@@ -102,12 +107,23 @@ if ser.is_open:
         M5 = map_value(M5, 1000, 2000, 1100, 1900)
         M6 = map_value(M6, 1000, 2000, 1100, 1900)
 
+        M1 = clamp(M1, 1200, 1800)
+        M2 = clamp(M2, 1200, 1800)
+        M3 = clamp(M3, 1200, 1800)
+        M4 = clamp(M4, 1200, 1800)
+        M5 = clamp(M5, 1200, 1800)
+        M6 = clamp(M6, 1200, 1800)
+
         send_message = pickle.dumps([M1, M2, M3, M4,
                                      M5, M6, 0, 0,
                                      0, 0, 0, 0,
                                      0, 0, 0, S1])
-
-        UDPClientSocket.sendto(send_message, serverAddressPort)
+        try:
+            UDPClientSocket.sendto(send_message, serverAddressPort)
+        except:
+            print("Connection Lost, reconnecting...")
+            UDPClientSocket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+            print("Reconnected!")
 
         print("M1 = {:5} \t M2 = {:5} \t M3 = {:5} \t M4 = {:5} \t M5 = {:5} \t M6 = {:5} \t S1 = {:5}"
               .format(M1, M2, M3, M4, M5, M6, S1))
